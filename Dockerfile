@@ -10,3 +10,9 @@ RUN pip install --upgrade pip setuptools wheel
 
 # Install the requirements
 RUN pip install -r requirements.txt
+
+EXPOSE 8000
+
+CMD ["app.py"]
+
+ENTRYPOINT ["python3"]
