@@ -1,4 +1,5 @@
 pandas
 flask
 pillow
+opencv-python
 gdown
