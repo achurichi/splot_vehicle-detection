@@ -7,7 +7,6 @@ from keras import models
 
 api_version = os.environ['API_VERSION']
 input_shape = int(os.environ['VTC_INPUT_SHAPE'])
-model_name = os.environ['VTC_MODEL_NAME']
 models_path = '/root/app/models'
 images_path = '/root/app/images'
 decoder = {
@@ -16,7 +15,7 @@ decoder = {
     2: 'van'
 }
 
-model = models.load_model(os.path.join(models_path, model_name))
+model = models.load_model(os.path.join(models_path, 'vtc_model.h5'))
 
 # Make a prediction to load cache and save time on following requests
 image = cv2.imread('/root/app/test_image/test.jpg')
@@ -27,7 +26,7 @@ model.predict(image)
 vtc = Blueprint('vtc', __name__)
 
 
-@vtc.route(f'/api/{api_version}/vtc/predict', methods=['GET'])
+@vtc.route(f'/api/{api_version}/vtc/predict', methods=['POST'])
 def vtc_predict():
     try:
         image_filename = request.json['filename']

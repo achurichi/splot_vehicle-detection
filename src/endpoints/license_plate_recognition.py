@@ -116,7 +116,7 @@ lpnr_model = tf.keras.models.load_model(lpnr_model_path, custom_objects=custom_o
 lpr = Blueprint('lpr', __name__)
 
 
-@lpr.route(f'/api/{api_version}/lpr/predict', methods=['GET'])
+@lpr.route(f'/api/{api_version}/lpr/predict', methods=['POST'])
 def lpr_predict():
     try:
         image_filename = request.json['filename']
