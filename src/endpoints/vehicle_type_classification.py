@@ -33,6 +33,9 @@ def vtc_predict():
     except:
         return Response('Wrong request body', status=400)
 
+    if image_filename[-4:].lower() != '.jpg':
+        return Response('Wrong image file format. \'jpg\' is expected', status=400)
+
     image = cv2.imread(os.path.join(images_path, image_filename))
     if image is None:
         return Response('Image file not found', status=500)

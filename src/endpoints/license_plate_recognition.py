@@ -123,9 +123,15 @@ def lpr_predict():
     except:
         return Response('Wrong request body', status=400)
 
+    if image_filename[-4:].lower() != '.jpg':
+        return Response('Wrong image file format, \'jpg\' is expected', status=400)
+
     image = cv2.imread(os.path.join(images_path, image_filename))
     if image is None:
         return Response('Image file not found', status=500)
+
+    if image.shape[0] != image_height or image.shape[1] != image_width:
+        return Response(f'Invalid image size. {image_width}x{image_height} is expected', status=500)
 
     lpd_result = lpd_predict(image)
 
