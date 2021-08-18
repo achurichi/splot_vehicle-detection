@@ -96,7 +96,7 @@ def lpnr_predict(model, image):
 
     result = {
         'plateNumber': plate,
-        'scores': scores.tolist(),
+        'scores': {str(i + 1): score for i, score in enumerate(scores.tolist())},
         'lowScore': low_threshold
     }
 
