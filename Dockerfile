@@ -2,9 +2,6 @@ FROM tensorflow/tensorflow:2.5.0
 
 WORKDIR /root/app
 
-# Copy the src directory content into the container at /app
-COPY ./src /root/app
-
 # Add the python requirements in order to docker cache them
 COPY requirements.txt requirements.txt
 
@@ -15,6 +12,9 @@ RUN apt-get update && apt-get install -y python3-opencv
 
 # Install the requirements
 RUN pip install -r requirements.txt
+
+# Copy the src directory content into the container at /app
+COPY ./src /root/app
 
 # Download pretrained models from Google Drive
 RUN mkdir models
