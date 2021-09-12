@@ -20,6 +20,7 @@ model = models.load_model(os.path.join(models_path, 'vtc_model.h5'))
 # Make a prediction to load cache and save time on following requests
 image = cv2.imread('/root/app/test_image/test.jpg')
 image = cv2.resize(image, dsize=(input_shape, input_shape), interpolation=cv2.INTER_NEAREST)
+image = image.astype('float32')/255.
 image = image.reshape((1, image.shape[0], image.shape[1], image.shape[2]))
 model.predict(image)
 
@@ -41,6 +42,7 @@ def vtc_predict():
         return Response('Image file not found', status=500)
 
     image = cv2.resize(image, dsize=(input_shape, input_shape), interpolation=cv2.INTER_NEAREST)
+    image = image.astype('float32')/255.
     image = image.reshape((1, image.shape[0], image.shape[1], image.shape[2]))
 
     prediction = model.predict(image)
