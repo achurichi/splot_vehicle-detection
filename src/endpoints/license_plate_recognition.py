@@ -5,8 +5,6 @@ import string
 import cv2 
 import numpy as np
 import tensorflow as tf
-from object_detection.utils import config_util
-from object_detection.builders import model_builder
 from tensorflow.python.keras.activations import softmax
 # Custom metrics/losses
 from utils.custom import cat_acc, cce, plate_acc, top_3_k
@@ -14,48 +12,45 @@ from utils.custom import cat_acc, cce, plate_acc, top_3_k
 api_version = os.environ['API_VERSION']
 image_width = int(os.environ['IMAGE_WIDTH'])
 image_height = int(os.environ['IMAGE_HEIGHT'])
+lpd_input_shape = int(os.environ['LPD_INPUT_SHAPE'])
 lpd_threshold = float(os.environ['LPD_THRESHOLD'])
 lpnr_threshold = float(os.environ['LPNR_THRESHOLD'])
 images_path = '/root/app/images'
-lpd_checkpoint = '/root/app/models/lpd_model/ckpt'
-lpd_pipeline_config = '/root/app/models/lpd_model/pipeline.config'
+lpd_model_path = '/root/app/models/lpd_model'
 lpnr_model_path = '/root/app/models/lpnr_model.h5'
 alphabet = string.digits + string.ascii_uppercase + '_'
 
 # ------------------------- License Plate Detection -------------------------
 
-# Load pipeline config and build a detection model
-configs = config_util.get_configs_from_pipeline_file(lpd_pipeline_config)
-detection_model = model_builder.build(model_config=configs['model'], is_training=False)
-
-# Restore checkpoint
-ckpt = tf.compat.v2.train.Checkpoint(model=detection_model)
-ckpt.restore(lpd_checkpoint).expect_partial()
-
-
-@tf.function
-def detect_fn(image):
-    image, shapes = detection_model.preprocess(image)
-    prediction_dict = detection_model.predict(image, shapes)
-    detections = detection_model.postprocess(prediction_dict, shapes)
-    return detections
-
+lpd_model = tf.keras.models.load_model(lpd_model_path, compile=False)
 
 def lpd_predict(image):
-    image_np = np.array(image)
-    input_tensor = tf.convert_to_tensor(np.expand_dims(image_np, 0), dtype=tf.float32)
-    detections = detect_fn(input_tensor)
-    num_detections = int(detections.pop('num_detections'))
-    detections = {key: value[0, :num_detections].numpy() for key, value in detections.items()}
-    
-    detection_score = float(detections['detection_scores'][0])
-    low_detection_score = True if detections['detection_scores'][0] < lpd_threshold else False
+    porcessed_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    porcessed_image = cv2.resize(porcessed_image, (lpd_input_shape, lpd_input_shape))
+    porcessed_image = porcessed_image/255.
+    porcessed_image = tf.constant([np.asarray(porcessed_image).astype(np.float32)])
+
+    prediction = lpd_model.predict(porcessed_image)
+    boxes = prediction[:, :, 0:4]
+    scores = prediction[:, :, 4:]
+
+    boxes, scores, _, _ = tf.image.combined_non_max_suppression(
+        boxes=tf.reshape(boxes, (tf.shape(boxes)[0], -1, 1, 4)),
+        scores=tf.reshape(scores, (tf.shape(scores)[0], -1, tf.shape(scores)[-1])),
+        max_output_size_per_class=1,
+        max_total_size=1,
+        # score_threshold=lpd_threshold
+    )
+
+    detection_score = float(scores.numpy()[0])
+    low_detection_score = True if detection_score < lpd_threshold else False
     detection_box = {
-        'ymin': int(detections['detection_boxes'][0][0]*image_height), 
-        'xmin': int(detections['detection_boxes'][0][1]*image_width),
-        'ymax': int(detections['detection_boxes'][0][2]*image_height),
-        'xmax': int(detections['detection_boxes'][0][3]*image_width)
+        'ymin': int(boxes.numpy()[0][0][0]*image_height), 
+        'xmin': int(boxes.numpy()[0][0][1]*image_width),
+        'ymax': int(boxes.numpy()[0][0][2]*image_height),
+        'xmax': int(boxes.numpy()[0][0][3]*image_width)
     }
+    print(detection_box)
 
     result = {
         'detectionBox': detection_box,
