@@ -34,23 +34,21 @@ def lpd_predict(image):
     boxes = prediction[:, :, 0:4]
     scores = prediction[:, :, 4:]
 
-    boxes, scores, _, _ = tf.image.combined_non_max_suppression(
+    box, score, _, _ = tf.image.combined_non_max_suppression(
         boxes=tf.reshape(boxes, (tf.shape(boxes)[0], -1, 1, 4)),
         scores=tf.reshape(scores, (tf.shape(scores)[0], -1, tf.shape(scores)[-1])),
         max_output_size_per_class=1,
         max_total_size=1,
-        # score_threshold=lpd_threshold
     )
 
-    detection_score = float(scores.numpy()[0])
+    detection_score = float(score.numpy()[0])
     low_detection_score = True if detection_score < lpd_threshold else False
     detection_box = {
-        'ymin': int(boxes.numpy()[0][0][0]*image_height), 
-        'xmin': int(boxes.numpy()[0][0][1]*image_width),
-        'ymax': int(boxes.numpy()[0][0][2]*image_height),
-        'xmax': int(boxes.numpy()[0][0][3]*image_width)
+        'ymin': int(box.numpy()[0][0][0]*image_height), 
+        'xmin': int(box.numpy()[0][0][1]*image_width),
+        'ymax': int(box.numpy()[0][0][2]*image_height),
+        'xmax': int(box.numpy()[0][0][3]*image_width)
     }
-    print(detection_box)
 
     result = {
         'detectionBox': detection_box,
@@ -130,14 +128,21 @@ def lpr_predict():
 
     lpd_result = lpd_predict(image)
 
-    detection_box = lpd_result['detectionBox']
-    cropped_image = image[
-        detection_box['ymin']:detection_box['ymax'], 
-        detection_box['xmin']:detection_box['xmax'], 
-    ]
-    cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+    if lpd_result['score'] < lpd_threshold:
+        lpnr_result = {
+            'plateNumber': "_______",
+            'scores': {str(i + 1): 0 for i in range(7)},
+            'lowScore': True
+        }
+    else:
+        detection_box = lpd_result['detectionBox']
+        cropped_image = image[
+            detection_box['ymin']:detection_box['ymax'], 
+            detection_box['xmin']:detection_box['xmax'], 
+        ]
+        cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
 
-    lpnr_result = lpnr_predict(lpnr_model, cropped_image)
+        lpnr_result = lpnr_predict(lpnr_model, cropped_image)
 
     result = {
         'lpd': lpd_result,
