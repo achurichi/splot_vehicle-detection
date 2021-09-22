@@ -1,4 +1,5 @@
 pandas
 flask
 opencv-python
+easyocr
 gdown

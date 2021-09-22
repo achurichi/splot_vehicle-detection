@@ -5,34 +5,20 @@ import string
 import cv2 
 import numpy as np
 import tensorflow as tf
-from keras import models
 from tensorflow.python.keras.activations import softmax
-from utils.custom import cat_acc, cce, plate_acc, top_3_k # Custom metrics/losses
+# Custom metrics/losses
+from utils.custom import cat_acc, cce, plate_acc, top_3_k
 
 api_version = os.environ['API_VERSION']
 image_width = int(os.environ['IMAGE_WIDTH'])
 image_height = int(os.environ['IMAGE_HEIGHT'])
-vtc_input_shape = int(os.environ['VTC_INPUT_SHAPE'])
 lpd_input_shape = int(os.environ['LPD_INPUT_SHAPE'])
 lpd_threshold = float(os.environ['LPD_THRESHOLD'])
 lpnr_threshold = float(os.environ['LPNR_THRESHOLD'])
-decoder = { 0: 'car', 1: 'motorbike', 2: 'van' }
 images_path = '/root/app/images'
-vtc_model_path = '/root/app/models/vtc_model.h5'
 lpd_model_path = '/root/app/models/lpd_model'
 lpnr_model_path = '/root/app/models/lpnr_model.h5'
 alphabet = string.digits + string.ascii_uppercase + '_'
-
-# ----------------------- Vehicle Type Classification -----------------------
-
-vtc_model = models.load_model(vtc_model_path)
-
-# Make a prediction to load cache and save time on following requests
-test_image = cv2.imread('/root/app/test_image/test.jpg')
-test_image = cv2.resize(test_image, dsize=(vtc_input_shape, vtc_input_shape), interpolation=cv2.INTER_NEAREST)
-test_image = test_image.astype('float32')/255.
-test_image = test_image.reshape((1, test_image.shape[0], test_image.shape[1], test_image.shape[2]))
-vtc_model.predict(test_image)
 
 # ------------------------- License Plate Detection -------------------------
 
@@ -56,6 +42,7 @@ def lpd_predict(image):
     )
 
     detection_score = float(score.numpy()[0])
+    low_detection_score = True if detection_score < lpd_threshold else False
     detection_box = {
         'ymin': int(box.numpy()[0][0][0]*image_height), 
         'xmin': int(box.numpy()[0][0][1]*image_width),
@@ -63,11 +50,13 @@ def lpd_predict(image):
         'xmax': int(box.numpy()[0][0][3]*image_width)
     }
 
-    return {
+    result = {
         'detectionBox': detection_box,
         'score': detection_score,
-        'lowScore': True if detection_score < lpd_threshold else False
+        'lowScore': low_detection_score
     }
+
+    return result
 
 # Make a prediction to load cache and save time on following requests
 test_image = cv2.imread('/root/app/test_image/test.jpg')
@@ -96,12 +85,15 @@ def lpnr_predict(model, image):
     image = tf.constant(image, dtype=tf.float32)
     prediction = predict_from_array(image, model).numpy()
     plate, scores = scores_to_plate(prediction)
+    low_threshold = True if np.min(scores) < lpnr_threshold else False
 
-    return {
+    result = {
         'plateNumber': plate,
-        'scores': { str(i + 1): score for i, score in enumerate(scores.tolist()) },
-        'lowScore': True if np.min(scores) < lpnr_threshold else False
+        'scores': {str(i + 1): score for i, score in enumerate(scores.tolist())},
+        'lowScore': low_threshold
     }
+
+    return result
 
 custom_objects = {
     'cce': cce,
@@ -117,11 +109,8 @@ lpnr_model = tf.keras.models.load_model(lpnr_model_path, custom_objects=custom_o
 lpr = Blueprint('lpr', __name__)
 
 
-@lpr.route(f'/api/{api_version}/predict', methods=['POST'])
+@lpr.route(f'/api/{api_version}/lpr/predict', methods=['POST'])
 def lpr_predict():
-
-    # ----- Validations
-    
     try:
         image_filename = request.json['filename']
     except:
@@ -137,31 +126,12 @@ def lpr_predict():
     if image.shape[0] != image_height or image.shape[1] != image_width:
         return Response(f'Invalid image size. {image_width}x{image_height} is expected', status=500)
 
-    # ----- VTC prediction
-
-    vtc_image = cv2.resize(image, dsize=(vtc_input_shape, vtc_input_shape), interpolation=cv2.INTER_NEAREST)
-    vtc_image = vtc_image.astype('float32')/255.
-    vtc_image = vtc_image.reshape((1, vtc_image.shape[0], vtc_image.shape[1], vtc_image.shape[2]))
-
-    vtc_pred = vtc_model.predict(vtc_image)
-
-    # change the probabilities to actual labels
-    vtc_pred_label = decoder[np.argmax(vtc_pred)]
-    vtc_pred_score = np.amax(vtc_pred)
-
-    vtc_result = {
-        'type': vtc_pred_label,
-        'score': float(vtc_pred_score)
-    }
-
-    # ----- LPD and LPNR predictions
-
     lpd_result = lpd_predict(image)
 
     if lpd_result['score'] < lpd_threshold:
         lpnr_result = {
             'plateNumber': "_______",
-            'scores': { str(i + 1): 0. for i in range(7) },
+            'scores': {str(i + 1): 0 for i in range(7)},
             'lowScore': True
         }
     else:
@@ -175,7 +145,6 @@ def lpr_predict():
         lpnr_result = lpnr_predict(lpnr_model, cropped_image)
 
     result = {
-        'vtc': vtc_result,
         'lpd': lpd_result,
         'lpnr': lpnr_result
     }
