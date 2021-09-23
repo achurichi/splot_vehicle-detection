@@ -2,11 +2,13 @@ from flask import Blueprint, Response
 from flask import request, jsonify
 import os
 import string
+import re
 import cv2 
 import numpy as np
 import tensorflow as tf
 from keras import models
 from tensorflow.python.keras.activations import softmax
+import easyocr
 from utils.custom import cat_acc, cce, plate_acc, top_3_k # Custom metrics/losses
 
 api_version = os.environ['API_VERSION']
@@ -16,6 +18,7 @@ vtc_input_shape = int(os.environ['VTC_INPUT_SHAPE'])
 lpd_input_shape = int(os.environ['LPD_INPUT_SHAPE'])
 lpd_threshold = float(os.environ['LPD_THRESHOLD'])
 lpnr_threshold = float(os.environ['LPNR_THRESHOLD'])
+lpnr_region_threshold = float(os.environ['LPNR_REGION_THRESHOLD'])
 decoder = { 0: 'car', 1: 'motorbike', 2: 'van' }
 images_path = '/root/app/images'
 vtc_model_path = '/root/app/models/vtc_model.h5'
@@ -73,7 +76,7 @@ def lpd_predict(image):
 test_image = cv2.imread('/root/app/test_image/test.jpg')
 lpd_predict(test_image)
 
-# --------------------- License Plate Number Recognition ---------------------
+# -------------- License Plate Number Recognition (Cars/Vans) ---------------
 
 @tf.function
 def predict_from_array(img, model):
@@ -90,7 +93,7 @@ def scores_to_plate(prediction):
     return plate, scores
 
 
-def lpnr_predict(model, image):
+def lpnr_car_predict(model, image):
     image = cv2.resize(image, dsize=(140, 70), interpolation=cv2.INTER_LINEAR)
     image = image[np.newaxis, ..., np.newaxis] / 255.
     image = tf.constant(image, dtype=tf.float32)
@@ -112,7 +115,65 @@ custom_objects = {
 }
 lpnr_model = tf.keras.models.load_model(lpnr_model_path, custom_objects=custom_objects)
 
-# ------------------------------ Flask Endpoint ------------------------------ 
+# ------------- License Plate Number Recognition (Motorbikes) ---------------
+
+def filter_text(region, lpnr_result, region_threshold):
+    rectangle_size = region.shape[0]*region.shape[1]
+    plate = []
+    scores = {}
+
+    for result in lpnr_result:
+        length = np.sum(np.subtract(result[0][1], result[0][0]))
+        height = np.sum(np.subtract(result[0][2], result[0][1]))
+        if length*height / rectangle_size > region_threshold:
+            plate.append(result[1])
+            for _ in range(len(result[1])):
+                scores[str(len(scores) + 1)] = result[2]
+
+    plateNumber = ''.join(plate).upper()
+
+    if len(plateNumber) == 6: 
+        plateNumber += '_'
+        scores['7'] = 1.
+    
+    return {
+        'plateNumber': plateNumber,
+        'scores': scores,
+        'lowScore': True if np.min(list(scores.values())) < lpnr_threshold else False
+    }
+
+
+def lpnr_choose_best_prediction(gray_info, binary_info):
+    binary_match = False 
+    if len(binary_info['plateNumber']) == 7 and re.match("^[A-Z0-9_]*$", binary_info['plateNumber']):
+        binary_match = True
+
+    gray_match = False 
+    if len(gray_info['plateNumber']) == 7 and re.match("^[A-Z0-9_]*$", gray_info['plateNumber']):
+        gray_match = True
+
+    if binary_match and gray_match:
+        min_score_binary = np.min(list(binary_info['scores'].values()))
+        min_score_gray = np.min(list(gray_info['scores'].values()))
+        return binary_info if min_score_binary > min_score_gray else gray_info
+    if binary_match:
+        return binary_info
+    if gray_match:
+        return gray_info
+    else:
+        return {
+            'plateNumber': "_______",
+            'scores': { str(i + 1): 0. for i in range(7) },
+            'lowScore': True
+        }
+
+reader = easyocr.Reader(['en'])
+
+# Make a prediction to load cache and save time on following requests
+test_image = cv2.imread('/root/app/test_image/test.jpg')
+reader.readtext(test_image)
+
+# ------------------------------ Flask Endpoint ----------------------------- 
 
 lpr = Blueprint('lpr', __name__)
 
@@ -170,9 +231,19 @@ def lpr_predict():
             detection_box['ymin']:detection_box['ymax'], 
             detection_box['xmin']:detection_box['xmax'], 
         ]
-        cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+        cropped_image_gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+        _, cropped_image_binary = cv2.threshold(cropped_image_gray, 127, 255, cv2.THRESH_BINARY)
 
-        lpnr_result = lpnr_predict(lpnr_model, cropped_image)
+        lpnr_result = None;
+        
+        if vtc_result['type'] == 'motorbike':
+            result_gray = reader.readtext(cropped_image_gray)
+            result_binary = reader.readtext(cropped_image_binary)
+            plate_gray_info = filter_text(cropped_image_gray, result_gray, lpnr_region_threshold)
+            plate_binary_info = filter_text(cropped_image_binary, result_binary, lpnr_region_threshold)
+            lpnr_result = lpnr_choose_best_prediction(plate_gray_info, plate_binary_info)
+        else:
+            lpnr_result = lpnr_car_predict(lpnr_model, cropped_image_gray)
 
     result = {
         'vtc': vtc_result,

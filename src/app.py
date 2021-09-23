@@ -1,6 +1,6 @@
 import os
 from flask import Flask
-from endpoints.license_plate_recognition import lpr
+from controllers.license_plate_recognition import lpr
 
 app = Flask(__name__)
 

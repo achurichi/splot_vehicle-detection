@@ -22,12 +22,9 @@ RUN gdown --id 1OKQ9WIsUmikxHkYgAgVifujILeIwri3F --output models/
 # lpd_model.tar.xz
 RUN gdown --id 1nZEh7IhpmgKn2OwT0IRlHVmqakap-gs0 --output models/
 RUN cd models && tar -xf lpd_model.tar.xz && rm lpd_model.tar.xz
-
-# Download and install Tensorflow Object Detection
-# RUN mkdir tf_models
-# RUN apt-get install -y git protobuf-compiler
-# RUN git clone https://github.com/tensorflow/models tf_models/
-# RUN cd tf_models/research && protoc object_detection/protos/*.proto --python_out=. && cp object_detection/packages/tf2/setup.py . && python -m pip install --use-feature=2020-resolver .
+# easyOCR model
+COPY easyOCR_download_model.py easyOCR_download_model.py
+RUN python easyOCR_download_model.py
 
 # Copy the src directory content into the container at /app
 COPY ./src /root/app
