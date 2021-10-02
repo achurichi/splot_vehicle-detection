@@ -16,15 +16,15 @@ RUN pip install -r requirements.txt
 # Download pretrained models from Google Drive
 RUN mkdir models
 # vtc_model.h5
-RUN gdown --id 1Kkco5y_mymHhvsF65wjGywbPY_cmyTH_ --output models/
+# RUN gdown --id 1Kkco5y_mymHhvsF65wjGywbPY_cmyTH_ --output models/
 # lpnr_model.h5
-RUN gdown --id 1OKQ9WIsUmikxHkYgAgVifujILeIwri3F --output models/
+# RUN gdown --id 1OKQ9WIsUmikxHkYgAgVifujILeIwri3F --output models/
 # lpd_model.tar.xz
-RUN gdown --id 1nZEh7IhpmgKn2OwT0IRlHVmqakap-gs0 --output models/
-RUN cd models && tar -xf lpd_model.tar.xz && rm lpd_model.tar.xz
+# RUN gdown --id 1nZEh7IhpmgKn2OwT0IRlHVmqakap-gs0 --output models/
+# RUN cd models && tar -xf lpd_model.tar.xz && rm lpd_model.tar.xz
 # easyOCR model
-COPY easyOCR_download_model.py easyOCR_download_model.py
-RUN python easyOCR_download_model.py
+# COPY easyOCR_download_model.py easyOCR_download_model.py
+# RUN python easyOCR_download_model.py
 
 # Copy the src directory content into the container at /app
 COPY ./src /root/app
